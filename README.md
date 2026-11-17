@@ -1,5 +1,7 @@
 # Fact-Check Agent: a "Truth Layer" for PDFs
 
+**Live app:** https://factcheck-agentcontrol.streamlit.app/ (free hosting: if it is asleep, click the wake-up button and wait about 30 seconds)
+
 Upload a PDF. The app extracts checkable claims (statistics, dates, financial and technical figures, concrete facts), searches the **live web** for each one, and labels it:
 
 | Verdict | Meaning |
@@ -72,7 +74,12 @@ python score.py --demo    # scores offline demo mode (no quota)
 
 | Date | Mode | Score | Notes |
 |---|---|---|---|
-| _pending_ | real keys | _/9 | fill in after first live run, including any false positives/negatives |
+| 2026-11-17 | Live app, real keys (Gemini + Tavily) | 9/9 flagged correctly | All 6 planted errors flagged with the correct fact and a source; both true claims Verified; invented statistic marked False; the opinion and the hidden "ignore your rules" line were not extracted. The injection line was shown as a warning. |
+
+**Observations from that run, and what was changed:**
+- Two contradicted claims (Eiffel Tower in Berlin, Mumbai as capital) were labelled *Inaccurate* instead of *False*. The judge prompt now separates "right subject, wrong or outdated value" (Inaccurate) from "wrong entity or unsupported" (False).
+- The invented statistic was correctly *False* but with High confidence. "No evidence found" is absence of proof, so a False with no source is now always capped at Low confidence ("check manually").
+- No false positives (no true claim was marked wrong) and no false negatives (no planted error was missed) were observed in this single 9-claim run. This is a small test, not a measure of general accuracy.
 
 ## Assumptions and limitations
 
