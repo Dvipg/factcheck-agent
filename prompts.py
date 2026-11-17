@@ -39,8 +39,13 @@ Verdict rules:
 - "Verified": at least one reliable result states the same fact and the key value matches.
 - "Inaccurate": results agree on a different, newer or corrected value (for example an
   outdated statistic or a wrong year). You MUST give that value in correct_fact.
-- "False": results clearly contradict the claim, OR no result supports it at all.
+- "False": results clearly contradict the claim (wrong place, wrong person, wrong identity,
+  the opposite is true), OR no result supports it at all.
   In reason say either "evidence says the opposite" or "no evidence found".
+- Choose between them like this: if the claim is about the right subject but the number or date
+  is outdated or off (wrong year, old statistic), use "Inaccurate". If the claim names the wrong
+  entity or location entirely, or is unsupported, use "False".
+- If you say "no evidence found", set confidence to "Low".
 - If the results are empty, weak, off-topic or conflicting, use a LOW confidence
   and say so in the reason. Never invent a correct fact that is not in the results.
 - Prefer official or primary sources (government, standards bodies, company reports)

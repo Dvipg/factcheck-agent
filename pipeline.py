@@ -315,6 +315,8 @@ def finalize(claim: dict, evidence: list[dict], verdict: Optional[dict], search_
         r.reason = "No evidence found in web search results."
     if r.verdict in ("Inaccurate", "False") and r.correct_fact and not r.source_url:
         r.confidence = "Low"                # a correction without a source is weak
+    if r.verdict == "False" and not r.source_url:
+        r.confidence = "Low"                # 'no evidence found' is absence of proof: say check manually
     return r
 
 
