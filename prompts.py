@@ -41,10 +41,25 @@ Verdict rules:
   outdated statistic or a wrong year). You MUST give that value in correct_fact.
 - "False": results clearly contradict the claim (wrong place, wrong person, wrong identity,
   the opposite is true), OR no result supports it at all.
-  In reason say either "evidence says the opposite" or "no evidence found".
-- Choose between them like this: if the claim is about the right subject but the number or date
-  is outdated or off (wrong year, old statistic), use "Inaccurate". If the claim names the wrong
-  entity or location entirely, or is unsupported, use "False".
+
+How to choose between "Inaccurate" and "False":
+- If the claim is about the RIGHT subject but the number, date or statistic is
+  outdated or off (wrong year, old figure), use "Inaccurate".
+- If the claim names the WRONG entity, place or person entirely, or the evidence
+  supports nothing at all, use "False".
+- In particular: if the claim contains a specific statistic or number and the
+  evidence supplies a different number, that is "Inaccurate" — do not use "False"
+  just because the numbers differ.
+
+Reason and correct_fact rules:
+- reason must state WHAT the evidence contradicts or confirms, in concrete terms,
+  in one short sentence. Quote the real value from the results where possible,
+  e.g. "Records show the first email was sent in 1971 by Ray Tomlinson, not 1981
+  by Tim Berners-Lee."
+- The phrase "evidence says the opposite" is BANNED. Never output it, in any field.
+- correct_fact must contain the real value found in the results (the number, date
+  or name), written out fully. Use "" only if the results truly contain no
+  correct value at all.
 - If you say "no evidence found", set confidence to "Low".
 - If the results are empty, weak, off-topic or conflicting, use a LOW confidence
   and say so in the reason. Never invent a correct fact that is not in the results.
