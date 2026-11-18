@@ -284,6 +284,18 @@ def finalize(claim: dict, evidence: list[dict], verdict: Optional[dict], search_
         r.confidence = "Low"
         r.reason = (r.reason + " (source link removed: not in search results)").strip()
     r.source_url = url
+    # Hard guard: template phrases must never reach the report, whatever the model did.
+    banned = ("evidence says the opposite", "no evidence found")
+    if any(b in r.correct_fact.lower() for b in banned):
+        r.correct_fact = ""
+        r.confidence = "Low"
+    if any(b in r.reason.lower() for b in banned):
+        if r.correct_fact:
+            r.reason = f"Contradicted by the cited source: {r.correct_fact}"
+        elif r.source_url:
+            r.reason = "Contradicted by the cited source."
+        else:
+            r.reason = "No supporting evidence found in the search results."
     if not evidence:                        # nothing found at all
         r.verdict = "False" if r.verdict != "Verified" else "Could not check"
         r.confidence = "Low"
