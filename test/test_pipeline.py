@@ -110,6 +110,21 @@ def test_run_judge_failure_degrades_gracefully():
     assert out["results"][0]["verdict"] == "Could not check"
 
 
+DEMO = ROOT / "sample" / "demo_document.pdf"
+
+
+@pytest.mark.skipif(not DEMO.exists(), reason="run make_trap_pdf.py first")
+def test_demo_document_is_two_pages_and_flags_injection():
+    pages = pipeline.extract_pages(DEMO.read_bytes())
+    assert len(pages) == 2
+    assert pipeline.detect_injection("\n".join(pages))
+
+
+def test_no_groq_references_left():
+    src = (ROOT / "pipeline.py").read_text().lower() + (ROOT / "config.py").read_text().lower()
+    assert "groq" not in src
+
+
 @pytest.mark.skipif(not TRAP.exists(), reason="run make_trap_pdf.py first")
 def test_demo_mode_scores_trap_document():
     out = pipeline.run(TRAP.read_bytes(), llm=demo.demo_llm, search_fn=demo.demo_search)
