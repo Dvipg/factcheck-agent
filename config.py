@@ -30,7 +30,6 @@ def get_secret(name: str, default: str = "") -> str:
 
 # Free-tier model ids change over time. Override with GEMINI_MODEL if one is retired.
 DEFAULT_GEMINI_MODELS = ["gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]
-GROQ_MODEL_DEFAULT = "llama-3.3-70b-versatile"
 
 MAX_CLAIMS = 15          # cap to protect free quotas
 MAX_TEXT_CHARS = 30000   # characters of PDF text sent to the model

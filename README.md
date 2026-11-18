@@ -1,109 +1,148 @@
-# Fact-Check Agent: a "Truth Layer" for PDFs
+# Fact-Check Agent
 
-**Live app:** https://factcheck-agentcontrol.streamlit.app/ (free hosting: if it is asleep, click the wake-up button and wait about 30 seconds)
+**A verification layer for documents.** Upload a PDF; the system extracts verifiable claims, tests each one against live web evidence, and returns a verdict with the corrected fact, a source link, a confidence level and the date checked.
 
-Upload a PDF. The app extracts checkable claims (statistics, dates, financial and technical figures, concrete facts), searches the **live web** for each one, and labels it:
+**Live application:** https://factcheck-agentcontrol.streamlit.app/
+The application runs on shared hosting and may sleep when idle. If a wake-up prompt appears, select it and allow about 30 seconds.
 
-| Verdict | Meaning |
+---
+
+## 1. Problem
+
+Marketing briefs, reports and AI-generated drafts routinely contain statistics, dates and figures that are outdated, misquoted or invented. Manual verification is slow, and language models checking claims from memory repeat the same stale data. Reviewers need a fast, auditable first pass that shows *what* is wrong, *what is correct*, and *where that came from*.
+
+## 2. Solution
+
+| Capability | Behaviour |
 |---|---|
-| 🟢 **Verified** | A reliable source states the same fact and the key value matches |
-| 🟠 **Inaccurate** | The claim is outdated or off; the app shows the correct value from the sources |
-| 🔴 **False** | Sources contradict the claim, or no evidence was found (the reason says which) |
-| ⚪ **Could not check** | Search or AI was rate limited or timed out; shown instead of guessing |
+| Claim extraction | Identifies statistics, dates, financial figures, technical specifications and concrete facts. Opinions, marketing language and predictions are excluded. |
+| Live verification | Each claim is searched on the web at run time. Verdicts are grounded only in the retrieved results, not in model memory. |
+| Evidence-backed output | Every verdict includes the corrected fact, one-line rationale, source URL, confidence and check date. |
+| Safe degradation | If search or the model is unavailable, the claim is reported as *Could not check* rather than guessed. |
+| Export | The full report downloads as CSV. |
 
-Every row shows the correct fact, a one-line reason, a clickable source, a confidence level (High/Medium/Low) and the date it was checked. A CSV report can be downloaded.
+### Verdict definitions
 
-## How it works
+| Verdict | Definition |
+|---|---|
+| **Verified** | A reliable source states the same fact and the key value matches. |
+| **Inaccurate** | The subject is correct but the value is outdated or wrong (for example, an old statistic or an incorrect year). The corrected value is shown. |
+| **False** | Sources contradict the claim (wrong entity or location), or no supporting evidence exists. Unsupported claims are capped at Low confidence. |
+| **Could not check** | Search or model call failed or timed out. Manual review is required. |
+
+## 3. Architecture
 
 ```
-PDF -> text (pypdf) -> AI extracts claims + search queries (1 call)
-    -> live web search per claim (Tavily, parallel, cached)
-    -> AI judge reads ONLY the search results, all claims in one call (1 call)
-    -> safety checks -> report table
+PDF upload
+  -> text extraction (pypdf)
+  -> claim extraction + search-query generation       [1 model call]
+  -> parallel web search per claim (Tavily, cached)
+  -> batched judgement against retrieved evidence     [1 model call]
+  -> validation layer -> results table + CSV
 ```
 
-Design choices:
-- **Live search, not AI memory.** Outdated statistics come from model memory, so the judge is only allowed to use the fresh search results.
-- **Few AI calls.** About 2 LLM calls per document regardless of claim count, to stay inside free tiers. Claims are capped at 15.
-- **No invented facts or links.** A source URL must appear in the search results or it is dropped and confidence is lowered. With no search results the claim is "False: no evidence found" at Low confidence; with a search *failure* it is "Could not check", never a false "False".
-- **Prompt-injection defence.** Text inside the PDF is passed as data inside delimiters, the model is told to ignore instructions in it, and lines that look like instructions to an AI are shown as a warning.
-- **Fallbacks.** Gemini models are tried in order, then Groq if a key is set. Each call retries once. Failures produce a friendly message, never a crash.
+**Design decisions**
 
-## Run locally
+- **Evidence-only judging.** The judge may use only supplied search results, which prevents stale model memory from deciding the verdict.
+- **Two model calls per document.** Claims are judged in one batch, so cost and latency do not scale with claim count. Search is the only per-claim call, capped at 15 claims.
+- **Validation layer.** A source URL must appear in the retrieved results or it is removed and confidence is lowered. A verdict with no evidence cannot carry a fabricated correction.
+- **Prompt-injection defence.** Document text is passed as delimited data, the model is instructed to ignore any directives inside it, and lines that resemble instructions to an AI are surfaced as a warning.
+- **Model resilience.** An ordered list of Gemini models is attempted with one retry each; rate limits and retired model names fall through to the next model. Search uses a single provider with one retry and a cache.
+- **Current-date awareness.** The run date is supplied to the model so time-sensitive claims are judged against today.
+
+## 4. Evaluation
+
+Two answer-keyed test documents are included in `sample/`.
+
+| Document | Claims | Purpose |
+|---|---|---|
+| `trap_document.pdf` | 9 + 1 opinion + 1 injection line | Compact regression test |
+| `demo_document.pdf` | 11 + 1 opinion + 1 injection line | Realistic two-page brief for demonstration |
+
+Results on `trap_document.pdf`, live pipeline (Gemini + Tavily), run on 2026-11-17:
+
+| Run | Errors flagged | True claims verified | Label accuracy | Change made |
+|---|---|---|---|---|
+| Baseline | 7 of 7 | 2 of 2 | 7 of 9 | Wrong-entity claims (Eiffel Tower in Berlin, Mumbai as capital) were labelled *Inaccurate* instead of *False*; the unsupported statistic carried High confidence. |
+| After prompt revision | 7 of 7 | 2 of 2 | 9 of 9 | Added explicit *Inaccurate* vs *False* criteria; unsupported *False* verdicts capped at Low confidence. |
+
+The opinion and the embedded instruction line were not extracted as claims, and the instruction line was reported as a warning. No false positives (true claims marked wrong) and no missed errors were observed.
+
+**Scope of these results:** nine claims is a small sample and demonstrates behaviour, not general accuracy. Re-run `python score.py --doc demo` after any prompt or model change.
+
+## 5. Setup
+
+Requires Python 3.10+.
 
 ```bash
+git clone https://github.com/Dvipg/factcheck-agent.git
+cd factcheck-agent
 python -m venv .venv
-.venv\Scripts\activate            # Windows. On Mac/Linux: source .venv/bin/activate
+.venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt
-copy .env.example .env            # Mac/Linux: cp .env.example .env
-# open .env and paste your keys (this file is git-ignored)
+cp .env.example .env              # Windows: copy .env.example .env
 streamlit run app.py
 ```
 
-No keys yet? Leave the sidebar **Demo mode** on to try the interface with canned answers (only meaningful for `sample/trap_document.pdf`).
+### Configuration
 
-## API keys (free tiers, no billing needed)
+| Variable | Required | Purpose | Source |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Yes | Claim extraction and judgement | https://aistudio.google.com/apikey |
+| `TAVILY_API_KEY` | Yes | Live web search | https://app.tavily.com |
+| `GEMINI_MODEL` | No | Overrides the primary model if one is retired | Model list in Google AI Studio |
 
-| Key | Get it | Used for |
-|---|---|---|
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | extract claims and judge |
-| `TAVILY_API_KEY` | https://app.tavily.com | live web search |
-| `GROQ_API_KEY` (optional) | https://console.groq.com/keys | backup LLM |
+Without both keys the app starts in an offline demo mode using canned answers, intended for interface development only.
 
-Keys are **never in the code**. Locally they live in `.env`; on Streamlit Cloud they go in *App > Settings > Secrets* (see `.streamlit/secrets.toml.example`). Both locations are in `.gitignore`.
+### Secrets handling
 
-## Deploy (Streamlit Community Cloud)
+Credentials are never stored in source. Locally they are read from `.env`; in production from the host's secret store (see `.streamlit/secrets.toml.example`). `.env` and `secrets.toml` are listed in `.gitignore`. If a key is ever exposed, revoke it in the provider dashboard and issue a new one; deleting the file from the repository does not remove it from history.
 
-1. Push this repo to GitHub (public).
-2. https://share.streamlit.io > *Create app* > pick the repo, branch `main`, main file `app.py`.
-3. *Advanced settings > Secrets*: paste the contents of `.streamlit/secrets.toml.example` with real values.
-4. Open the live URL in a private window and upload `sample/trap_document.pdf`.
+### Deployment
 
-## Testing
+Deployed on Streamlit Community Cloud: connect the repository, set the main file to `app.py`, select Python 3.12 or 3.13, and add the two keys under *Settings > Secrets*.
+
+## 6. Testing
 
 ```bash
-pytest                    # unit tests, no API calls
-python make_trap_pdf.py   # regenerates sample/trap_document.pdf + expected.json
-python score.py           # scores the REAL pipeline on the trap PDF (uses ~3 LLM calls)
-python score.py --demo    # scores offline demo mode (no quota)
+pytest                           # unit tests, no network access required
+python make_trap_pdf.py          # regenerate sample documents and answer keys
+python score.py                  # score the live pipeline on the trap document
+python score.py --doc demo       # score the live pipeline on the demonstration document
+python score.py --offline        # score the offline mode (no API calls)
 ```
 
-`sample/trap_document.pdf` is our own trap document: wrong dates, an outdated population figure, a wrong location, an invented statistic, two true facts, an opinion that must be skipped, and a hidden "ignore your rules" line.
+Unit tests cover PDF validation (empty, non-PDF, scanned), injection detection, claim de-duplication and caps, source-URL validation, no-evidence handling, search-failure handling and graceful degradation when the judge is unavailable.
 
-**Results log** (update after each real run):
+## 7. Limitations
 
-| Date | Mode | Score | Notes |
-|---|---|---|---|
-| 2026-11-17 | Live app, real keys (Gemini + Tavily) | 9/9 flagged correctly | All 6 planted errors flagged with the correct fact and a source; both true claims Verified; invented statistic marked False; the opinion and the hidden "ignore your rules" line were not extracted. The injection line was shown as a warning. |
+- Text-based PDFs only. Scanned or image-only files are rejected with a message; OCR is not included.
+- English-language documents. Only the first ~30,000 characters are analysed, and up to 15 claims per document are checked.
+- Verdicts rest on search-result snippets rather than full pages, and a model can still misjudge. Low confidence indicates manual review is needed.
+- Relative dates ("last year") are interpreted against the run date and may be ambiguous.
+- The service operates within provider free-tier quotas. A per-session run limit protects shared capacity, and throughput is correspondingly limited.
+- Search relies on a single provider. Model calls fall back across Gemini models, not across providers.
+- Document text is transmitted to third-party model and search providers; do not upload confidential files.
 
-**Observations from that run, and what was changed:**
-- Two contradicted claims (Eiffel Tower in Berlin, Mumbai as capital) were labelled *Inaccurate* instead of *False*. The judge prompt now separates "right subject, wrong or outdated value" (Inaccurate) from "wrong entity or unsupported" (False).
-- The invented statistic was correctly *False* but with High confidence. "No evidence found" is absence of proof, so a False with no source is now always capped at Low confidence ("check manually").
-- No false positives (no true claim was marked wrong) and no false negatives (no planted error was missed) were observed in this single 9-claim run. This is a small test, not a measure of general accuracy.
+## 8. Roadmap
 
-## Assumptions and limitations
+| Horizon | Item |
+|---|---|
+| Near term | OCR for scanned PDFs; highlight claims in the source document; persistent cross-session cache |
+| Mid term | Multi-source corroboration for confidence scoring; secondary search provider; labelled benchmark set tracked per release |
+| Longer term | Batch queue for high-volume use; API endpoint; reviewer workflow with accept/reject and audit trail |
 
-- Text PDFs only. Scanned/image PDFs get a friendly warning (no OCR).
-- English documents. Long documents: only the first ~30,000 characters are analysed, and at most 15 claims are checked, most specific first.
-- Verdicts rest on web search snippets, not full pages, and the AI can still misjudge. Low confidence means: check manually.
-- Relative dates ("last year") are judged against today's date and the document's own context, and may be ambiguous.
-- Free-tier AI providers may use submitted text to improve their products: do not upload confidential documents.
-- Free quotas are small; a per-session run limit protects them. If they run out, see the demo video.
-
-## What I would do with more time
-
-Caching across sessions, a confidence score from multiple sources, highlighting claims in the PDF, OCR for scanned files, a background job queue for 1,000 documents a day, and a larger labelled test set to measure accuracy after every prompt change.
-
-## Project layout
+## 9. Project structure
 
 ```
-app.py            Streamlit screen
-pipeline.py       extract -> search -> judge, fallbacks, safety
-prompts.py        all AI instructions
-config.py         safe secret loading and limits
-demo.py           offline demo mode
-make_trap_pdf.py  builds the test document
-score.py          scores a run against expected answers
-tests/            unit tests
-sample/           trap_document.pdf and expected.json
+app.py                 Streamlit interface
+pipeline.py            extraction, search, judgement, validation
+prompts.py             model instructions
+config.py              secret loading and limits
+demo.py                offline mode for development
+make_trap_pdf.py       builds sample documents and answer keys
+score.py               scores a run against an answer key
+tests/                 unit tests
+sample/                test documents and answer keys
+.streamlit/            secrets template
 ```

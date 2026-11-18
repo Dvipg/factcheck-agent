@@ -124,39 +124,15 @@ def _gemini(system: str, user: str, model: str, key: str) -> str:
         raise LLMError(f"gemini:{model}:empty")
 
 
-def _groq(system: str, user: str, model: str, key: str) -> str:
-    r = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {key}"},
-        json={
-            "model": model,
-            "temperature": 0,
-            "response_format": {"type": "json_object"},
-            "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        },
-        timeout=TIMEOUT,
-    )
-    if r.status_code != 200:
-        raise LLMError(f"groq:{model}:{r.status_code}")
-    try:
-        return r.json()["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError):
-        raise LLMError(f"groq:{model}:empty")
-
-
 def llm_json(system: str, user: str) -> dict:
-    """Try Gemini models in order, then Groq. Retry once on transient errors."""
+    """Try the configured Gemini models in order; retry once per model on transient errors."""
     gkey = config.get_secret("GEMINI_API_KEY")
-    qkey = config.get_secret("GROQ_API_KEY")
     custom = config.get_secret("GEMINI_MODEL")
     models = ([custom] if custom else []) + [m for m in config.DEFAULT_GEMINI_MODELS if m != custom]
 
     attempts: list[Callable[[], str]] = []
     if gkey:
         attempts += [lambda m=m: _gemini(system, user, m, gkey) for m in models]
-    if qkey:
-        gm = config.get_secret("GROQ_MODEL", config.GROQ_MODEL_DEFAULT)
-        attempts.append(lambda: _groq(system, user, gm, qkey))
     if not attempts:
         raise LLMError("No LLM API key configured. Add GEMINI_API_KEY (see README).")
 
@@ -173,7 +149,7 @@ def llm_json(system: str, user: str) -> dict:
                     break
                 if retry == 0:
                     time.sleep(2)
-    raise LLMError(f"All AI providers failed or are rate limited ({last}). Try again in a minute.")
+    raise LLMError(f"All configured AI models failed or are rate limited ({last}). Try again in a minute.")
 
 
 # ------------------------------------------------------------------------ Search

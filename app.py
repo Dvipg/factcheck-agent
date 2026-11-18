@@ -18,14 +18,19 @@ st.write(
     "with the correct fact, a source link and a confidence level."
 )
 
+has_keys = bool(config.get_secret("GEMINI_API_KEY")) and bool(config.get_secret("TAVILY_API_KEY"))
+# Offline demo mode exists only for local development without API keys.
+# When keys are configured (production), live verification is always used and no toggle is shown.
+demo_mode = not has_keys
+
 with st.sidebar:
-    st.header("Settings")
-    has_keys = bool(config.get_secret("GEMINI_API_KEY") or config.get_secret("GROQ_API_KEY")) and bool(config.get_secret("TAVILY_API_KEY"))
-    demo_mode = st.toggle("Demo mode (no API calls)", value=not has_keys,
-                          help="Uses canned answers so the interface can be tried without any API quota. Only meaningful for the sample trap PDF.")
-    st.caption(f"Checks at most {config.MAX_CLAIMS} claims per document.")
-    st.caption("Verdicts rely on web search snippets. Low confidence means: please check manually.")
-    st.caption("Uploaded text is sent to the AI and search providers. Do not upload confidential files.")
+    st.header("About")
+    if demo_mode:
+        st.warning("API keys are not configured. Running in offline demo mode with canned answers "
+                   "(accurate only for sample/trap_document.pdf).")
+    st.caption(f"Checks up to {config.MAX_CLAIMS} claims per document, most specific first.")
+    st.caption("Verdicts rely on live web search snippets. Low confidence means: verify manually.")
+    st.caption("Document text is sent to the AI and search providers. Do not upload confidential files.")
 
 if "runs" not in st.session_state:
     st.session_state.runs = 0
@@ -69,9 +74,10 @@ if out:
         )
         for r in res:
             with st.container(border=True):
-                c1, c2 = st.columns([1, 4])
+                c1, c2 = st.columns([1.6, 4])
                 c1.markdown(
-                    f"<div style='background:{COLOR[r['verdict']]};padding:8px;border-radius:8px;color:#111;text-align:center'>"
+                    f"<div style='background:{COLOR[r['verdict']]};padding:8px 6px;border-radius:8px;color:#111;"
+                    f"text-align:center;white-space:nowrap;font-size:0.95rem'>"
                     f"<b>{BADGE[r['verdict']]}</b><br><small>Confidence: {r['confidence']}</small></div>",
                     unsafe_allow_html=True,
                 )
@@ -88,4 +94,4 @@ if out:
         st.download_button("Download report (CSV)", df.to_csv(index=False).encode("utf-8"),
                            file_name="fact_check_report.csv", mime="text/csv")
 else:
-    st.caption("Tip: use sample/trap_document.pdf from the repository to try it.")
+    st.caption("Sample documents are available in the repository under sample/.")
