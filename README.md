@@ -142,7 +142,7 @@ config.py              secret loading and limits
 demo.py                offline mode for development
 make_trap_pdf.py       builds sample documents and answer keys
 score.py               scores a run against an answer key
-tests/                 unit tests
+test/                  unit tests
 sample/                test documents and answer keys
-.streamlit/            secrets template
+Streamlit/             secrets template
 ```
